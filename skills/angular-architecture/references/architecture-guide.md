@@ -1,124 +1,211 @@
-# Enterprise Angular Architecture
-**Summary Type:** In-Depth Technical Analysis & Implementation Guide
+# Enterprise Angular Architecture — Deep Guide
 
-## 1. Core Thesis
-The document proposes a strict, tooling-validated (automated) architecture aimed at maintaining development velocity over the long term. It relies on the exclusive use of **Standalone APIs**, a **clear separation between template context and injector hierarchy**, and a **unidirectional dependency graph** to prevent cyclic coupling.
+This document covers the theory and rationale behind the architecture. Read this when you need to understand **why** a rule exists, not just what it is.
 
-The guiding principle is: **Isolation is 3 to 5 times more valuable than DRY (Don't Repeat Yourself) in frontend.**
+## Core Thesis
 
----
+The architecture enforces a strict, one-way dependency graph to maintain development velocity over the long term. It relies on:
 
-## 2. Fundamental Concepts and Theory
+1. **Standalone APIs exclusively** — no NgModules for application code
+2. **Clear separation between template context and injector hierarchy** — two parallel Angular systems
+3. **Unidirectional dependency graph** — prevents cyclic coupling
 
-### The Dependency Graph
-*   **Problem:** Aging projects tend toward "spaghetti" graphs with cycles (circular references), making refactoring impossible and increasing bundle sizes.
-*   **Solution:** Use tools like `madge` to visualize and validate a unidirectional graph (left to right).
-*   **Rule:** It is always possible to implement a feature without introducing a cycle.
-
-### Bundling and Performance
-*   **Reality:** The bottleneck is no longer just the network, but **JS parsing and execution**.
-*   **Strategy:** Avoid monolithic bundles. The bundler (Webpack/Esbuild) splits files via dynamic imports (`import()`).
-*   **Architecture:** A clean architecture physically dictates the bundle structure (Eager vs Lazy).
-
-### Two Parallel Angular Systems
-1.  **Standalones (Template Context):**
-    *   Components, Directives, Pipes.
-    *   Manage their own dependencies via the `imports: []` array.
-    *   No indirection via `NgModule`.
-2.  **Injectables (Injector Hierarchy):**
-    *   Services, Guards, Interceptors, Configs.
-    *   Managed by the injector hierarchy (`EnvironmentInjector` for lazy loading).
-    *   **Rule:** A service provided in a lazy feature is isolated (inaccessible to other features). A service in `root` is a global singleton.
+The guiding principle: **Isolation is 3-5x more valuable than DRY in frontend.**
 
 ---
 
-## 3. The 5 Architectural Pillars (Types)
+## Two Parallel Angular Systems
 
-The architecture divides the application into 5 distinct block types, each with strict import rules.
+Understanding these two systems is fundamental to making correct architectural decisions.
 
-| Type | Folder | Loading | Technical Description | Allowed Content |
-| :--- | :--- | :--- | :--- | :--- |
-| **Core** | `core/` | **Eager** | Global "headless" logic needed at startup. | Services, Guards, Interceptors, State (NgRx), Utils. **No UI components.** |
-| **Layout** | `layout/` | **Eager** | Page skeletons (Shells). | Standalone Components. Consumes `ui` and `core`. |
-| **UI** | `ui/` | **Mixed** | "Dumb" presentation components. | Pure Standalones. **Forbidden to import `core`**. Communication via `@Input`/`@Output` only. |
-| **Feature** | `feature/` | **Lazy** | Routed pages. Isolated "black boxes". | Components, Local Services, Routes. Can contain lazy sub-features. |
-| **Pattern** | `pattern/` | **Lazy/Eager** | Cross-cutting business functionalities "Drop-in" (non-routed). | Standalones + Services. E.g.: `DocumentManager`, `AuditLog`. Consumed via tag in the template. |
+### 1. Standalones (Template Context)
 
-### Implementation Details by Type
+Components, Directives, Pipes. They manage their own dependencies via `imports: []`. Each standalone builds its own template context — every dependency is an explicit import on the TypeScript file level, which equals a line in the dependency graph.
 
-#### A. Core (`core/`)
-*   Configuration via `provideCore()` in `app.config.ts`.
-*   Contains global state (Auth, User) and logic shared across multiple lazy features.
-*   **Initialization:** Use `ENVIRONMENT_INITIALIZER` to launch processes at startup.
-*   **Migration:** For non-standalone third-party libs, use `importProvidersFrom()`.
+This parity (import = dependency graph edge) makes it easy to reason about architectural impact.
 
-#### B. UI (`ui/`)
-*   **Strict rule:** Never inject services or state management.
-*   If a UI component needs complex data, the parent (Feature/Layout) must pass it down.
-*   **Optimization:** The bundler automatically extracts UI components into shared or lazy chunks based on their usage.
+### 2. Injectables (Injector Hierarchy)
 
-#### C. Feature (`feature/`)
-*   Base unit of Lazy Loading (via Router).
-*   **Isolation:** Feature A must **NEVER** import Feature B.
-*   **"Extract one level up" rule:** If A and B need the same logic:
-    *   If it's UI -> extract to `ui/`.
-    *   If it's State/Service -> extract to `core/`.
-    *   If it's a complex business flow -> extract to `pattern/`.
-*   **Fractal Structure:** A feature can contain lazy sub-features (`feature/orders/dashboard`).
+Services, Guards, Interceptors, Configs. Managed by the injector hierarchy, not by template context.
 
-#### D. Pattern (`pattern/`)
-*   Hybrid between UI and Feature.
-*   Has business logic (access to `core`) and display.
-*   Differs from Feature because it is not used via the router, but via a "drop-in" component (e.g.: `<my-org-comments />`).
+Key properties:
+- **Root injector** → application-wide singletons (`providedIn: 'root'`)
+- **Lazy injector** → created per lazy-loaded feature (`EnvironmentInjector`), isolated from siblings
+- **Element injector** → per component instance (rare, e.g. component stores)
+
+### Injector Hierarchy and Isolation
+
+When a feature is lazy-loaded, it creates its own `EnvironmentInjector`:
+
+1. **Services in the lazy injector are invisible to sibling features** — trying to inject them throws `NullInjectorError`
+2. **Lazy features CAN access services from the root/eager injector** (e.g. `core/` services)
+3. **Same service in multiple lazy injectors = multiple instances** (one per injector)
+4. **Same service in both lazy and eager = multiple instances**
+
+This is architecture enforcement for free — the DI system itself prevents cross-feature coupling.
 
 ---
 
-## 4. Architecture Rules and Best Practices
+## Bundling and Performance
 
-### Isolation vs DRY Rule
-*   Accept code duplication if it guarantees feature isolation.
-*   **Heuristic:** Wait for at least 3 occurrences of repetition before abstracting common logic ("3-5x" rule).
-*   A feature should be deletable ("throw-away code") without breaking the rest of the app.
+### Why Bundle Size Matters
 
-### Data Flow Rule (State vs View)
-*   Strictly separate logic (State/Headless) from the view.
-*   Components should be "logic-free": they immediately delegate user interactions to services or the store (NgRx).
+The bottleneck is NOT just network — it's **JavaScript parsing and execution**. Even on fast connections with cached bundles, the browser must parse and execute all eager JS before the app becomes interactive.
 
-### Import Rules (One-Way Flow)
-The allowed dependency flow is strictly hierarchical:
-1.  **Feature** depends on -> `UI`, `Core`, `Pattern`.
-2.  **Pattern** depends on -> `UI`, `Core`.
-3.  **Layout** depends on -> `UI`, `Core`.
-4.  **UI** depends on -> **NOTHING** (no Core).
-5.  **Core** depends on -> **NOTHING** (especially not Feature or UI).
+### How the Bundler Works
 
-### Handling "Cute Abstractions"
-*   Avoid creating wrappers around Angular or state management libs ("MyOrgAngular+").
-*   Stay at the framework's abstraction level. Verbosity decreases over time via updates (e.g.: `takeUntilDestroyed`).
+The bundler (webpack/esbuild) uses dynamic `import()` as split points:
 
----
+- **Static imports** → bundled into eager `main.js`
+- **Dynamic imports** → extracted into lazy chunks
 
-## 5. Quick Implementation Guide
+Architecture directly dictates bundle structure:
+- `core/` and `layout/` → always eager (initial bundle)
+- `feature/` → always lazy (separate bundles via `loadChildren`)
+- `ui/` → bundler decides based on usage patterns (see types reference)
+- `pattern/` → usually lazy, loaded with consuming feature
 
-### Recommended Folder Structure
-```text
-src/
-├── app/
-│   ├── core/           # Singleton services, config, global state
-│   │   ├── auth/
-│   │   ├── user/
-│   │   └── core.ts     # export function provideCore()
-│   ├── layout/         # Application shells
-│   ├── ui/             # Pure reusable components
-│   ├── feature/        # Lazy-loaded pages (Business logic)
-│   │   ├── dashboard/
-│   │   └── settings/
-│   ├── pattern/        # Reusable business functionalities (Drop-in)
-│   └── app.routes.ts
+### `@defer` Lazy Loading
+
+For heavy components within features (charts, editors, maps, data tables), use `@defer`:
+
+```typescript
+@defer {
+  <app-heavy-chart [data]="chartData()" />
+}
 ```
 
-### Code Sharing Scenarios ("Extract one level up")
-1.  **Component used in 1 Feature:** Stays in `feature/A/components`.
-2.  **Component used in Feature A and Feature B:** Move to `ui/` (if generic) or `pattern/` (if business-specific).
-3.  **Service used in Feature A and Feature B:** Move to `core/`.
-4.  **Lazy sub-feature:** Can be shared via routing (`loadChildren` pointing to a sibling folder), but watch out for coupling.
+Only use `@defer` for genuinely heavy components. Don't defer everything — that creates request waterfalls.
+
+---
+
+## Isolation: The Central Principle
+
+### Why Isolation > DRY
+
+In frontend:
+- Requirements are often **highly ad-hoc** (custom rules for tiny user subsets)
+- User flows need **independent evolution** as business needs change
+- Premature abstractions become **"god" components/services** trying to handle every edge case
+- **3+ repetitions** should occur before considering abstraction
+
+### Isolation Guarantees
+
+When maintained:
+- **Local impact**: Feature changes can't affect other features
+- **Local testing**: Feature tests can't break other features' tests
+- **Throw-away**: Replace entire features without side effects
+- **Black box**: Internal quality issues stay contained
+- **Onboarding**: New team members are productive faster (smaller context to understand)
+
+### The "Black Box" Benefit
+
+Even if a feature's internal code quality is poor, isolation prevents that "dirtiness" from spreading. This lets teams:
+- Optimize for delivery speed when needed
+- Keep old features working while adopting new patterns in new features
+- Replace features entirely instead of expensive refactoring
+
+---
+
+## Correct Level of Abstraction
+
+### Stay at Framework Level
+
+~95% of effort should go into **application business logic** that delivers user value. The correct abstraction level is:
+
+1. Angular itself
+2. Your chosen state management library (NgRx, etc.)
+
+That's it.
+
+### What NOT to Abstract
+
+- **Base components** wrapping Angular components (breaks `ng update` migrations)
+- **Custom structural directives** like `*myOrgFor` / `*customIf` (broke control flow migration in Angular 17)
+- **Custom testing abstractions** (broke with standalone APIs adoption)
+- **NgRx wrappers** combining selectors + actions in "clever" ways
+
+### Handling Verbosity
+
+Verbosity decreases over time as Angular evolves:
+- Angular 16: `takeUntilDestroyed` replaced manual `Subject` + `ngOnDestroy`
+- NgRx: Creator APIs, action groups, functional effects, `createFeature`
+
+Use schematics for code generation, consistent naming for search-and-replace, and `ng-morph` for large-scale code transformations.
+
+---
+
+## Recommended Folder Structure
+
+```
+src/
+├── app/
+│   ├── app.ts              # Root component
+│   ├── app.config.ts       # Only calls provideCore({ routes })
+│   ├── app.routes.ts       # Top-level route config
+│   ├── core/               # Headless singletons
+│   │   ├── auth/           # Domain: authentication
+│   │   ├── user/           # Domain: user management
+│   │   ├── order/          # Domain: shared order state
+│   │   └── core.ts         # provideCore() export
+│   ├── layout/             # Application shell(s)
+│   │   ├── main-layout/
+│   │   └── auth-layout/    # (if multiple layouts)
+│   ├── ui/                 # Pure reusable components
+│   │   ├── button/
+│   │   ├── card/
+│   │   ├── avatar/
+│   │   └── dialog/
+│   ├── pattern/            # Reusable business components
+│   │   ├── document-manager/
+│   │   └── approval-process/
+│   ├── feature/            # Lazy-loaded pages
+│   │   ├── dashboard/
+│   │   ├── orders/
+│   │   │   ├── orders.routes.ts
+│   │   │   ├── orders.ts
+│   │   │   ├── detail/     # Sub-feature
+│   │   │   └── state/      # Feature-local state
+│   │   └── settings/
+│   └── styles/             # (optional) Design tokens, themes
+└── environments/
+```
+
+---
+
+## Function-Based Building Blocks
+
+Angular supports function-based guards and interceptors. Treat them exactly like services for architecture purposes — implement in the same location:
+
+```typescript
+// core/auth/auth.guard.ts
+export const authGuard: CanActivateFn = () => {
+  const authService = inject(AuthService);
+  return authService.isAuthenticated()
+    ? true
+    : inject(Router).createUrlTree(['/login']);
+};
+```
+
+---
+
+## Sharing Lazy Features as Sub-Routes
+
+A shared sub-feature (e.g. generic detail view) can be referenced from multiple parent features via route config:
+
+```typescript
+// feature/order/order.routes.ts
+export default [
+  { path: '', component: OrderListComponent },
+  {
+    path: ':id',
+    loadChildren: () => import('../detail/detail.routes'),
+    // "../" — references sibling feature folder
+    // This is allowed for ROUTE CONFIG only, not for implementation imports
+  },
+] satisfies Routes;
+```
+
+**Important distinction**:
+- **Lazy sub-feature**: Located inside parent feature folder, shares parent's "black box" boundary
+- **Shared feature**: Located in separate folder, complete implementation isolation, only referenced through route config

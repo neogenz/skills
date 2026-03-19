@@ -20,7 +20,7 @@ npx skills add maximedesogus/skills/skills/angular-architecture
 
 | Skill | Description |
 |-------|-------------|
-| [angular-architecture](skills/angular-architecture) | Enterprise architecture advisor for placement decisions, dependency rules, isolation patterns, and lazy loading optimization |
+| [angular-architecture](skills/angular-architecture) | Enterprise architecture advisor for Angular v21+ — placement decisions, dependency rules, isolation patterns, eslint-boundaries validation, service scoping, and lazy loading optimization |
 
 ## Skill Structure
 

@@ -27,7 +27,7 @@ export class AuthService {
 - HTTP interceptors, error handlers
 - Guards used across multiple features
 - Services shared by 2+ lazy features
-- State management (NgRx store, global signals)
+- State management (global signal stores)
 
 **When NOT to use**:
 - Feature-specific services → use Route Scope
@@ -113,7 +113,7 @@ export class OrderEditorComponent {
 
 **When to use**:
 - Component-specific state (e.g., form state for an editor)
-- NgRx ComponentStore
+- Per-instance signal store
 - State that must be unique per component instance (e.g., multiple editors on the same page)
 
 ---

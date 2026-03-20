@@ -1,83 +1,117 @@
-# State Management Architecture
+# State Management — Signal Store Pattern
 
-Where state lives in the architecture depends on its scope. The same principle applies: isolation beats DRY. Feature state stays in features. Shared state goes to core.
-
----
-
-## State Placement Decision Tree
-
-```
-Is this state needed by 2+ features?
-├── YES → core/ with providedIn: 'root'
-│         (NgRx provideState/provideEffects in provideCore(),
-│          or signalStore with providedIn: 'root')
-└── NO → Is it scoped to one feature?
-          ├── YES → Feature route providers: []
-          │         (NgRx provideState/provideEffects in route config,
-          │          or signalStore as @Injectable() in route providers)
-          └── NO → Is it per-component instance?
-                    ├── YES → Component providers: []
-                    │         (ComponentStore, or signalStore on component)
-                    └── NO → Probably feature route-scoped
-```
+Angular 19+ idiomatic state management using `signal()`, `computed()`, `resource()`, and `async/await`. No external state library. No BehaviorSubject. No boilerplate.
 
 ---
 
-## NgRx Store
+## Principles
 
-### Global State (core/)
+| Concern | Tool | Why |
+|---------|------|-----|
+| State | `signal()` | Writable, reactive, synchronous |
+| Derived state | `computed()` | Lazy, cached, auto-tracked |
+| Async data loading | `resource()` | Declarative, lifecycle-aware, signal-driven |
+| Mutations | `async/await` | Imperative, explicit error handling |
+| Cross-store invalidation | Version signal in `resource` params | Triggers reload without coupling stores |
 
-State shared across multiple features or needed at app startup:
+---
+
+## Architecture Layers
+
+```
+Component  ──▶  Store  ──▶  ApiClient
+   │              │              │
+   │  inject()    │  inject()    │  HttpClient
+   │  read state  │  owns state  │  HTTP calls
+   │  call mutations             │  returns Promise<T>
+```
+
+- **Component**: reads signals, calls store mutations. No direct HTTP.
+- **Store**: `@Injectable()` service owning `signal()`, `computed()`, `resource()`. Single source of truth for its domain.
+- **ApiClient**: `@Injectable()` service wrapping `HttpClient`. Returns `Promise<T>` (use `firstValueFrom`). Validates responses with Zod.
+
+---
+
+## Store Anatomy
+
+A complete feature store with all 6 sections:
 
 ```typescript
-// core/auth/auth.state.ts
-export const authFeature = createFeature({
-  name: 'auth',
-  reducer: createReducer(
-    initialState,
-    on(AuthActions.loginSuccess, (state, { user }) => ({ ...state, user })),
-  ),
-});
+// feature/orders/order.store.ts
 
-// core/core.ts
-export function provideCore({ routes }: CoreOptions) {
-  return [
-    provideRouter(routes),
-    provideHttpClient(),
+@Injectable()
+export class OrderStore {
+  // ── 1. Dependencies ──
+  private readonly orderApi = inject(OrderApi);
 
-    // Global NgRx state
-    provideStore(),
-    provideState(authFeature),
-    provideState(userFeature),
-    provideEffects(AuthEffects, UserEffects),
+  // ── 2. State ──
+  private readonly _selectedId = signal<string | null>(null);
 
-    provideAppInitializer(() => {
-      const store = inject(Store);
-      store.dispatch(AppActions.init());
-    }),
-  ];
+  // ── 3. Resource (async data loading) ──
+  private readonly ordersResource = resource({
+    params: () => ({ version: this.invalidation.version() }),
+    loader: () => this.orderApi.getAll(),
+  });
+
+  private readonly orderDetailResource = resource({
+    params: () => {
+      const id = this._selectedId();
+      return id ? { id, version: this.invalidation.version() } : undefined;
+    },
+    loader: ({ params }) => this.orderApi.getById(params.id),
+  });
+
+  // ── 4. Selectors (readonly, derived) ──
+  readonly orders = this.ordersResource.value;
+  readonly selectedOrder = this.orderDetailResource.value;
+  readonly isLoading = computed(() => this.ordersResource.isLoading());
+  readonly isInitialLoading = computed(
+    () => this.ordersResource.isLoading() && !this.ordersResource.value(),
+  );
+  readonly totalCount = computed(() => this.orders()?.length ?? 0);
+
+  // ── 5. Mutations (async/await) ──
+  async create(dto: CreateOrderDto): Promise<void> {
+    await this.orderApi.create(dto);
+    this.invalidation.invalidate();
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.orderApi.delete(id);
+    this.invalidation.invalidate();
+  }
+
+  // ── 6. Utils ──
+  selectOrder(id: string | null): void {
+    this._selectedId.set(id);
+  }
+
+  // ── Invalidation ──
+  private readonly invalidation = inject(InvalidationService);
 }
 ```
 
-### Feature State (feature/ route providers)
+### Rules
 
-State used only within one feature — scoped to the lazy injector:
+| Rule | Applies to | Rationale |
+|------|-----------|-----------|
+| All public signals are `readonly` | Selectors | Consumers cannot mutate store state |
+| Derived state uses `computed()` | Selectors | Cached, lazy, auto-tracked |
+| No `effect()` in stores | Mutations | `effect()` hides causality — use explicit methods |
+| No `.subscribe()` | Anywhere | Signals are pull-based — subscribe is push-based legacy |
+| Mutations return `Promise<void>` | Mutations | Caller handles errors, no hidden side effects |
+| `resource()` for all data fetching | Resources | Declarative, lifecycle-aware, auto-cleanup |
+
+### Scoping via Route Providers
+
+Feature stores are scoped to their feature's lazy injector:
 
 ```typescript
-// feature/orders/order.state.ts
-export const orderFeature = createFeature({
-  name: 'orders',
-  reducer: createReducer(initialState, /* ... */),
-});
-
 // feature/orders/orders.routes.ts
 export default [
   {
     path: '',
-    providers: [
-      provideState(orderFeature),
-      provideEffects(OrderEffects),
-    ],
+    providers: [OrderStore, OrderApi],
     children: [
       { path: '', loadComponent: () => import('./order-list') },
       { path: ':id', loadComponent: () => import('./order-detail') },
@@ -86,159 +120,111 @@ export default [
 ] satisfies Routes;
 ```
 
-When a second feature needs the same state → extract to `core/`.
+Global stores (auth, user, preferences) use `providedIn: 'root'` and live in `core/`.
 
 ---
 
-## Signal Store (@ngrx/signals)
+## Loading States
 
-### Global Signal Store (core/)
-
-```typescript
-// core/user/user.store.ts
-export const UserStore = signalStore(
-  { providedIn: 'root' },
-  withState<UserState>({ user: null, loading: false }),
-  withMethods((store, userApi = inject(UserApi)) => ({
-    async loadUser() {
-      patchState(store, { loading: true });
-      const user = await firstValueFrom(userApi.getUser());
-      patchState(store, { user, loading: false });
-    },
-  })),
-);
-```
-
-### Feature Signal Store (route-scoped)
+Two distinct loading states for good UX:
 
 ```typescript
-// feature/orders/order.store.ts
-export const OrderStore = signalStore(
-  // No providedIn — scoped to feature
-  withState<OrderState>({ orders: [], loading: false }),
-  withMethods((store, orderApi = inject(OrderApi)) => ({
-    async loadOrders() {
-      patchState(store, { loading: true });
-      const orders = await firstValueFrom(orderApi.getAll());
-      patchState(store, { orders, loading: false });
-    },
-  })),
+// Initial load — show skeleton
+readonly isInitialLoading = computed(
+  () => this.ordersResource.isLoading() && !this.ordersResource.value(),
 );
 
-// feature/orders/orders.routes.ts
-export default [
-  {
-    path: '',
-    providers: [OrderStore, OrderApi],
-    children: [/* ... */],
-  },
-] satisfies Routes;
+// Subsequent reload — show subtle spinner, keep showing stale data
+readonly isLoading = computed(() => this.ordersResource.isLoading());
 ```
 
-### Component Signal Store (per-instance)
+Usage in template:
 
-```typescript
-// Used when each component instance needs its own state
-@Component({
-  selector: 'app-order-editor',
-  providers: [OrderEditorStore],
-  template: `...`,
-})
-export class OrderEditorComponent {
-  readonly store = inject(OrderEditorStore);
-}
-```
-
----
-
-## ComponentStore (@ngrx/component-store)
-
-Always component-scoped — provided in the component's `providers: []`:
-
-```typescript
-@Component({
-  selector: 'app-product-filter',
-  providers: [ProductFilterStore],
-  template: `...`,
-})
-export class ProductFilterComponent {
-  readonly store = inject(ProductFilterStore);
-}
-```
-
-ComponentStore is destroyed with the component. Use it for complex local state that doesn't need to persist across navigation.
-
----
-
-## Lightweight Signals (No Library)
-
-For simple state that doesn't need NgRx infrastructure:
-
-```typescript
-// core/theme/theme.service.ts — global
-@Injectable({ providedIn: 'root' })
-export class ThemeService {
-  private readonly _theme = signal<'light' | 'dark'>('light');
-  readonly theme = this._theme.asReadonly();
-
-  toggle() {
-    this._theme.update(t => t === 'light' ? 'dark' : 'light');
+```html
+@if (store.isInitialLoading()) {
+  <app-skeleton />
+} @else {
+  @if (store.isLoading()) {
+    <app-inline-spinner />
+  }
+  @for (order of store.orders(); track order.id) {
+    <app-order-card [order]="order" />
   }
 }
-
-// feature/orders/order-filter.service.ts — feature-scoped
-@Injectable()
-export class OrderFilterService {
-  readonly searchQuery = signal('');
-  readonly statusFilter = signal<OrderStatus | null>(null);
-
-  readonly activeFilters = computed(() => {
-    const filters: string[] = [];
-    if (this.searchQuery()) filters.push(`search: ${this.searchQuery()}`);
-    if (this.statusFilter()) filters.push(`status: ${this.statusFilter()}`);
-    return filters;
-  });
-}
 ```
 
 ---
 
-## State Placement Summary
+## Cross-Store Invalidation
+
+When a mutation in one store should reload data in another, use a shared version signal:
+
+```typescript
+// core/invalidation/invalidation.service.ts
+@Injectable({ providedIn: 'root' })
+export class InvalidationService {
+  private readonly _version = signal(0);
+  readonly version = this._version.asReadonly();
+
+  invalidate(): void {
+    this._version.update(v => v + 1);
+  }
+}
+```
+
+Any `resource()` that includes `version` in its params auto-reloads when `invalidate()` is called:
+
+```typescript
+private readonly ordersResource = resource({
+  params: () => ({ version: this.invalidation.version() }),
+  loader: () => this.orderApi.getAll(),
+});
+```
+
+For domain-scoped invalidation (e.g., only order-related stores), create domain-specific invalidation services instead of a single global one.
+
+---
+
+## State Placement
+
+Where state lives depends on its scope. Same rule as services — isolation beats DRY.
 
 | State type | Scope | Location | Registration |
 |------------|-------|----------|-------------|
-| Auth, user, global config | App-wide | `core/` | `provideCore()` or `providedIn: 'root'` |
+| Auth, user, global config | App-wide | `core/` | `providedIn: 'root'` |
 | Feature entity state | One feature | `feature/` | Route `providers: []` |
-| Shared entity state (2+ features) | App-wide | `core/<domain>/` | `provideCore()` or `providedIn: 'root'` |
+| Shared entity state (2+ features) | App-wide | `core/<domain>/` | `providedIn: 'root'` |
 | Complex form/editor state | Per component | Component | Component `providers: []` |
-| UI filter/sort state | Per component | Component | Component `providers: []` or inline signals |
+| UI filter/sort state | Per component | Component | Inline signals or component `providers: []` |
 | Theme, locale, preferences | App-wide | `core/` | `providedIn: 'root'` |
 
 ---
 
 ## Anti-patterns
 
-**Feature state with `providedIn: 'root'`**:
-```typescript
-// ❌ WRONG — feature state leaks to root
-export const OrderStore = signalStore(
-  { providedIn: 'root' },  // Breaks isolation!
-  withState({ orders: [] }),
-);
-```
+| Don't | Do | Why |
+|-------|-----|-----|
+| `effect()` to sync state | `computed()` for derivation, explicit methods for side effects | `effect()` hides causality and creates debug nightmares |
+| `.subscribe()` on observables in stores | `resource()` or `async/await` with `firstValueFrom` | Signals are pull-based — don't mix paradigms |
+| Feature store with `providedIn: 'root'` | `@Injectable()` + route providers | Breaks feature isolation, leaks to initial bundle |
+| Global store in a `feature/` folder | Move to `core/<domain>/` | If it's `providedIn: 'root'`, it belongs in `core/` |
+| Injecting feature store from another feature | Extract to `core/` | Cross-feature access = `NullInjectorError` at runtime |
+| Mutable public signals | `readonly` + `.asReadonly()` | Store owns its state — consumers read only |
+| `BehaviorSubject` for state | `signal()` | Signals are simpler, synchronous, and framework-native |
 
-**Global state in a feature folder**:
-```typescript
-// ❌ WRONG — shared state living in a feature
-// feature/orders/shared-order.store.ts with providedIn: 'root'
-// If it's providedIn: 'root', it belongs in core/
-```
+---
 
-**Injecting feature store from another feature**:
-```typescript
-// ❌ WRONG — cross-feature state access
-// feature/dashboard/dashboard.component.ts
-readonly orderStore = inject(OrderStore);
-// OrderStore is provided in feature/orders route — NullInjectorError!
-// Fix: extract to core/order/
-```
+## Per-Store Checklist
+
+When creating a new store, verify:
+
+- [ ] `@Injectable()` (no `providedIn` for feature stores)
+- [ ] Registered in route `providers: []` (feature) or `providedIn: 'root'` (core)
+- [ ] All public signals are `readonly`
+- [ ] Derived state uses `computed()`, not manual sync
+- [ ] Data loading uses `resource()` with params function
+- [ ] Mutations use `async/await`, return `Promise<void>`
+- [ ] No `effect()` — use explicit methods instead
+- [ ] No `.subscribe()` — use `resource()` or `firstValueFrom`
+- [ ] Invalidation wired via `InvalidationService.version()` in resource params
+- [ ] `isInitialLoading` and `isLoading` both exposed for UX

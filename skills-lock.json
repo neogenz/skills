@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "skills": {
+    "docs-writer": {
+      "source": "google-gemini/gemini-cli",
+      "sourceType": "github",
+      "computedHash": "6425e83122b85649bbc5dcdc3c21260b5d7b9fcc81f7330a42de9eccf8c24df8"
+    },
+    "readme-blueprint-generator": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "computedHash": "e2c7dabf2e455794260f1516e2ceda6a82dc92a409578cc184fcb0f45bddca54"
+    }
+  }
+}

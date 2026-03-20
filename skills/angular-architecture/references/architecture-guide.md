@@ -114,7 +114,7 @@ Even if a feature's internal code quality is poor, isolation prevents that "dirt
 ~95% of effort should go into **application business logic** that delivers user value. The correct abstraction level is:
 
 1. Angular itself
-2. Your chosen state management library (NgRx, etc.)
+2. Angular's signal-based state management (`signal()`, `computed()`, `resource()`)
 
 That's it.
 
@@ -123,13 +123,13 @@ That's it.
 - **Base components** wrapping Angular components (breaks `ng update` migrations)
 - **Custom structural directives** like `*myOrgFor` / `*customIf` (broke control flow migration in Angular 17)
 - **Custom testing abstractions** (broke with standalone APIs adoption)
-- **NgRx wrappers** combining selectors + actions in "clever" ways
+- **State management wrappers** combining signals + services in "clever" abstractions
 
 ### Handling Verbosity
 
 Verbosity decreases over time as Angular evolves:
 - Angular 16: `takeUntilDestroyed` replaced manual `Subject` + `ngOnDestroy`
-- NgRx: Creator APIs, action groups, functional effects, `createFeature`
+- Angular: `signal()`, `computed()`, `resource()` replaced BehaviorSubject patterns
 
 Use schematics for code generation, consistent naming for search-and-replace, and `ng-morph` for large-scale code transformations.
 

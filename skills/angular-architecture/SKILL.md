@@ -1,6 +1,6 @@
 ---
 name: angular-architecture
-description: Angular enterprise architecture advisor for placement decisions, dependency rules, isolation patterns, and architectural verification. Use when user asks "where should I put this", "can X import from Y", "Angular folder structure", mentions feature isolation, lazy loading placement, dependency violations, architecture audit, circular dependency, import cycle, barrel file, bundle size, initial load performance, NgRx state placement, signal store location, or when creating/moving Angular components, services, or modules between folders. Also use when reviewing PRs for architectural compliance, scaffolding new features, or setting up eslint-boundaries.
+description: Angular enterprise architecture advisor for placement decisions, dependency rules, isolation patterns, and architectural verification. Use when user asks "where should I put this", "can X import from Y", "Angular folder structure", mentions feature isolation, lazy loading placement, dependency violations, architecture audit, circular dependency, import cycle, barrel file, bundle size, initial load performance, signal store placement, state management, or when creating/moving Angular components, services, or modules between folders. Also use when reviewing PRs for architectural compliance, scaffolding new features, or setting up eslint-boundaries.
 argument-hint: <question-or-placement-decision>
 metadata:
   author: maximedesogus
@@ -64,7 +64,7 @@ Consult the reference files based on what you need:
 | Dependency graph, decision tree, sharing rules | `references/architecture-rules.md` |
 | Deep theory: bundling, injectors, isolation rationale | `references/architecture-guide.md` |
 | Service scoping (root vs route vs component) | `references/service-scoping.md` |
-| State management placement (NgRx, signalStore) | `references/state-management.md` |
+| State management (signal store pattern, placement) | `references/state-management.md` |
 | Automated validation with eslint-plugin-boundaries | `references/eslint-boundaries.md` |
 | Common mistakes Claude makes | `references/gotchas.md` |
 

@@ -185,7 +185,7 @@ When isolation is maintained:
 - `loadComponent` used for features instead of `loadChildren`
 
 ### Abstraction Violations
-- "Framework in a framework" — wrapping Angular/NgRx into custom abstractions
+- "Framework in a framework" — wrapping Angular into custom abstractions
 - Base components, custom `*myOrgFor`/`*customIf` directives (break `ng update` migrations)
 - Organizing `core/` by type instead of domain
 - God services shared across too many features

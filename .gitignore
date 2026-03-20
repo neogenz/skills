@@ -1,0 +1,4 @@
+# Internal skills (not for public exposure)
+.agent/skills/
+.agents/skills/
+.claude/skills/

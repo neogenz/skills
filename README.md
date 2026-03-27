@@ -21,6 +21,7 @@ npx skills add maximedesogus/skills/skills/angular-architecture
 | Skill | Description |
 |-------|-------------|
 | [angular-architecture](skills/angular-architecture) | Enterprise architecture advisor for Angular v21+ — placement decisions, dependency rules, isolation patterns, eslint-boundaries validation, service scoping, and lazy loading optimization |
+| [nestjs-api-design](skills/nestjs-api-design) | NestJS REST API architecture and design patterns — feature modules, controllers, services, DTOs, guards, interceptors, filters, pipes, error handling, caching, and configuration |
 
 ## Contributing
 

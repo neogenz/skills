@@ -1,0 +1,109 @@
+{
+  "skill_name": "nestjs-api-design",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "I need to add a new 'notifications' feature to my NestJS backend. Users should be able to list their notifications, mark them as read, and delete them. The notifications are stored in a PostgreSQL database via Supabase. Design the full module structure — controller, service, DTOs, and module wiring. Show me the file layout and the key code for each file.",
+      "expected_output": "A complete feature module with controller (thin, 3 routes), service (business logic), DTOs (Zod or class-validator), module wiring, and proper layer separation. Should include proper guards, validation, and response formatting.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "has_module_structure",
+          "description": "Output includes a clear file/directory layout for the notifications feature",
+          "type": "contains_pattern"
+        },
+        {
+          "name": "thin_controller",
+          "description": "Controller delegates to service, no business logic in controller methods",
+          "type": "semantic"
+        },
+        {
+          "name": "has_dtos",
+          "description": "Includes request/response DTOs with validation decorators or Zod schemas",
+          "type": "semantic"
+        },
+        {
+          "name": "has_module_wiring",
+          "description": "Includes a NestJS @Module with providers, controllers, and imports",
+          "type": "semantic"
+        },
+        {
+          "name": "layer_separation",
+          "description": "Service handles business logic, controller handles HTTP, no mixing",
+          "type": "semantic"
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "My NestJS API has inconsistent error responses — some endpoints throw raw HttpExceptions, others return custom objects. I want to centralize error handling with a global exception filter and typed error definitions. The API should return errors in a consistent format with error codes. Show me how to set this up from scratch.",
+      "expected_output": "A BusinessException class, ERROR_DEFINITIONS constants, a GlobalExceptionFilter, and instructions for registering it as APP_FILTER in a CoreModule. Should explain the 'log or throw, never both' principle and show anti-patterns to avoid.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "has_exception_class",
+          "description": "Defines a custom exception class (e.g., BusinessException) with structured fields",
+          "type": "semantic"
+        },
+        {
+          "name": "has_error_definitions",
+          "description": "Includes typed error definition constants with code, message, and httpStatus",
+          "type": "semantic"
+        },
+        {
+          "name": "has_global_filter",
+          "description": "Implements an ExceptionFilter with @Catch() that formats all errors consistently",
+          "type": "semantic"
+        },
+        {
+          "name": "consistent_error_format",
+          "description": "Error response includes statusCode, message, code, and timestamp fields",
+          "type": "semantic"
+        },
+        {
+          "name": "registration_shown",
+          "description": "Shows how to register the filter as APP_FILTER in a module",
+          "type": "semantic"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I'm building a NestJS API that needs three levels of access: public endpoints (health check, docs), authenticated user endpoints, and admin-only endpoints. How should I structure the guards and decorators? I'm using JWT for auth. Show me the guard implementations and how to apply them to different controllers.",
+      "expected_output": "A layered guard architecture with AuthGuard (JWT validation), RolesGuard (role checking), @Public() decorator, @Roles() decorator, global registration order, and usage examples on controllers.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "has_auth_guard",
+          "description": "Implements an AuthGuard that validates JWT Bearer tokens",
+          "type": "semantic"
+        },
+        {
+          "name": "has_roles_guard",
+          "description": "Implements a RolesGuard that checks user roles against route requirements",
+          "type": "semantic"
+        },
+        {
+          "name": "has_public_decorator",
+          "description": "Defines a @Public() decorator to skip authentication on specific routes",
+          "type": "semantic"
+        },
+        {
+          "name": "has_roles_decorator",
+          "description": "Defines a @Roles() decorator to specify required roles",
+          "type": "semantic"
+        },
+        {
+          "name": "guard_registration",
+          "description": "Shows global guard registration with APP_GUARD and explains execution order",
+          "type": "semantic"
+        },
+        {
+          "name": "usage_examples",
+          "description": "Shows concrete controller examples for public, authenticated, and admin routes",
+          "type": "semantic"
+        }
+      ]
+    }
+  ]
+}

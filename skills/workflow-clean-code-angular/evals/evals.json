@@ -1,0 +1,43 @@
+{
+  "skill_name": "workflow-clean-code-angular",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Run a standard clean code scan on feature/products/ — the component uses @Input(), *ngIf, constructor DI, ChangeDetectionStrategy.Default (missing OnPush), and has wrapper div soup in the template. The store mixes BehaviorSubject with signals and uses effect() to derive filtered data. Economy mode, no subagents.",
+      "expected_output": "A consolidated issue table with file:line references covering: legacy decorators (@Input/@Output), legacy control flow (*ngIf/*ngFor), constructor DI, missing OnPush, wrapper divs, BehaviorSubject in signal-based store, effect() misuse for derived state, public mutable signals, any types, and AI slop (over-commenting, defensive theater).",
+      "files": [
+        "workflow-clean-code-angular-workspace/test-fixtures/src/app/feature/products/products.component.ts",
+        "workflow-clean-code-angular-workspace/test-fixtures/src/app/feature/products/products.store.ts",
+        "workflow-clean-code-angular-workspace/test-fixtures/src/app/feature/products/products.service.ts"
+      ],
+      "assertions": []
+    },
+    {
+      "id": 1,
+      "prompt": "Audit this store for signal anti-patterns and error handling. The project does NOT use Zod — just plain HttpClient. Focus on: effect() used for derived state, BehaviorSubject mixed with signals, public mutable signals, .sort() mutation, getTotalValue returning formatted string, empty catch blocks, any types. Economy mode.",
+      "expected_output": "Findings that correctly identify signal misuse (effect→computed, BehaviorSubject→signal), store anatomy violations, mutating .sort(), formatting in store (should use pipe), error handling issues, without flagging missing Zod as a problem.",
+      "files": [
+        "workflow-clean-code-angular-workspace/test-fixtures/src/app/feature/products/products.store.ts"
+      ],
+      "assertions": []
+    },
+    {
+      "id": 2,
+      "prompt": "Run a deep audit with --slop flag on this Angular component. Focus on AI slop detection: over-commenting (JSDoc restating code), defensive null checks on typed values, verbose naming, single-use private methods, try/catch around non-throwing code, empty ngOnDestroy, wrapper div soup. Economy mode.",
+      "expected_output": "Identifies all AI slop patterns: unnecessary JSDoc, defensive checks on DI-injected values, try/catch around store.deleteProduct, empty ngOnDestroy lifecycle hook, wrapper divs, template expression complexity. Each finding has file:line reference.",
+      "files": [
+        "workflow-clean-code-angular-workspace/test-fixtures/src/app/feature/products/products.component.ts"
+      ],
+      "assertions": []
+    },
+    {
+      "id": 3,
+      "prompt": "Audit this service that uses RxJS patterns — WebSocket streams, BehaviorSubject as event bus, complex HTTP with switchMap/debounceTime/retry, and form valueChanges. These are all VALID RxJS patterns. The skill should NOT flag them as signal anti-patterns. Economy mode.",
+      "expected_output": "Report should find few or no signal-related issues. Should NOT flag WebSocket as 'use signal instead', should NOT flag BehaviorSubject event bus as anti-pattern, should NOT flag complex HTTP pipe chains as 'use httpResource'. May flag minor issues (missing types, etc.) but must not produce false positives on valid RxJS patterns.",
+      "files": [
+        "workflow-clean-code-angular-workspace/test-fixtures/src/app/core/notification.service.ts"
+      ],
+      "assertions": []
+    }
+  ]
+}
